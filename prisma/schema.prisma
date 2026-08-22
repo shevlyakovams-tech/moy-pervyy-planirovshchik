@@ -1,0 +1,386 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model AppSettings {
+  id                          String    @id @default("singleton")
+  onboardingCompletedAt       DateTime?
+  weeklyPlanningWeekday       Int       @default(7)
+  pageTurnEnabled             Boolean   @default(true)
+  plankGoalSoundEnabled       Boolean   @default(true)
+  notificationsGloballyPaused Boolean   @default(false)
+  quietHoursEnabled           Boolean   @default(false)
+  quietStartMinutes           Int?
+  quietEndMinutes             Int?
+  autostartEnabled            Boolean   @default(false)
+  waterQuickAmounts           String    @default("200,250,300")
+  version                     Int       @default(1)
+}
+
+model OnboardingState {
+  id              String   @id @default("singleton")
+  currentStep     Int      @default(1)
+  serializedDraft String   @default("{}")
+  startedAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model DailyEntry {
+  id                     String                  @id @default(uuid())
+  localDate              String                  @unique
+  gratitude              String?
+  mood                   String?
+  moodNote               String?
+  thought                String?
+  intention              String?
+  mainResult             String?
+  selfAction             String?
+  selfActionCompletedAt  DateTime?
+  closeAction            String?
+  closeActionCompletedAt DateTime?
+  rotatingPromptId       String?
+  quoteId                String?
+  quoteAssignedAt        DateTime?
+  morningCompletedAt     DateTime?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  version                Int                     @default(1)
+  rotatingPrompt         ReflectionPrompt?       @relation("RotatingPrompt", fields: [rotatingPromptId], references: [id], onDelete: Restrict)
+  quote                  Quote?                  @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+  reflectionAnswers      DailyReflectionAnswer[]
+
+  @@index([localDate])
+}
+
+model ReflectionPrompt {
+  id                String                  @id
+  kind              String
+  orderIndex        Int?
+  textRu            String
+  active            Boolean                 @default(true)
+  seedVersion       Int
+  dailyEntries      DailyEntry[]            @relation("RotatingPrompt")
+  reflectionAnswers DailyReflectionAnswer[]
+}
+
+model DailyReflectionAnswer {
+  id                 String           @id @default(uuid())
+  dailyEntryId       String
+  promptId           String
+  promptTextSnapshot String
+  answer             String
+  orderIndex         Int
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  version            Int              @default(1)
+  dailyEntry         DailyEntry       @relation(fields: [dailyEntryId], references: [id], onDelete: Restrict)
+  prompt             ReflectionPrompt @relation(fields: [promptId], references: [id], onDelete: Restrict)
+
+  @@unique([dailyEntryId, promptId])
+  @@index([dailyEntryId, orderIndex])
+}
+
+model Task {
+  id                    String    @id @default(uuid())
+  localDate             String
+  title                 String
+  category              String
+  priorityRank          Int?
+  status                String    @default("PLANNED")
+  sortOrder             Int
+  sourceTaskId          String?
+  chainRootTaskId       String?
+  resolvedAt            DateTime?
+  resolvedByNextMorning Boolean   @default(false)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  version               Int       @default(1)
+  sourceTask            Task?     @relation("TaskTransfer", fields: [sourceTaskId], references: [id], onDelete: Restrict)
+  transferredTasks      Task[]    @relation("TaskTransfer")
+  chainRoot             Task?     @relation("TaskChain", fields: [chainRootTaskId], references: [id], onDelete: Restrict)
+  chainTasks            Task[]    @relation("TaskChain")
+
+  @@index([localDate, sortOrder])
+  @@index([localDate, status])
+  @@index([sourceTaskId])
+  @@index([chainRootTaskId])
+}
+
+model WeeklyPlan {
+  id                 String             @id @default(uuid())
+  weekStart          String             @unique
+  goal               String?
+  whyImportant       String?
+  successCriterion   String?
+  obstacle           String?
+  fallbackPlan       String?
+  selfAction         String?
+  closeAction        String?
+  outcome            String             @default("UNRESOLVED")
+  outcomeResolvedAt  DateTime?
+  sourceWeeklyPlanId String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  version            Int                @default(1)
+  sourceWeeklyPlan   WeeklyPlan?        @relation("WeeklyTransfer", fields: [sourceWeeklyPlanId], references: [id], onDelete: Restrict)
+  transferredPlans   WeeklyPlan[]       @relation("WeeklyTransfer")
+  steps              WeeklyStep[]
+  habitFocuses       WeeklyHabitFocus[]
+
+  @@index([sourceWeeklyPlanId])
+}
+
+model WeeklyStep {
+  id           String     @id @default(uuid())
+  weeklyPlanId String
+  orderIndex   Int
+  text         String?
+  assignedDate String?
+  completedAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  version      Int        @default(1)
+  weeklyPlan   WeeklyPlan @relation(fields: [weeklyPlanId], references: [id], onDelete: Restrict)
+
+  @@unique([weeklyPlanId, orderIndex])
+}
+
+model WeeklyHabitFocus {
+  weeklyPlanId      String
+  habitId           String
+  habitNameSnapshot String
+  createdAt         DateTime   @default(now())
+  weeklyPlan        WeeklyPlan @relation(fields: [weeklyPlanId], references: [id], onDelete: Restrict)
+  habit             Habit      @relation(fields: [habitId], references: [id], onDelete: Restrict)
+
+  @@id([weeklyPlanId, habitId])
+  @@index([habitId])
+}
+
+model Quote {
+  id             String          @id
+  category       String
+  author         String
+  translationRu  String
+  sourceExcerpt  String
+  sourceLanguage String          @default("en")
+  workTitle      String
+  workYear       Int
+  yearKind       String
+  locator        String
+  sourceUrl      String
+  builtIn        Boolean         @default(true)
+  seedVersion    Int
+  dailyEntries   DailyEntry[]
+  userState      QuoteUserState?
+  displays       QuoteDisplay[]
+}
+
+model QuoteUserState {
+  quoteId    String    @id
+  favoriteAt DateTime?
+  hiddenAt   DateTime?
+  updatedAt  DateTime  @updatedAt
+  quote      Quote     @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+}
+
+model QuoteDisplay {
+  id                  String         @id @default(uuid())
+  quoteId             String
+  localDate           String
+  displayedAt         DateTime       @default(now())
+  cycleNumber         Int
+  reason              String
+  replacedByDisplayId String?
+  quote               Quote          @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+  replacedByDisplay   QuoteDisplay?  @relation("QuoteReplacement", fields: [replacedByDisplayId], references: [id], onDelete: Restrict)
+  replacesDisplay     QuoteDisplay[] @relation("QuoteReplacement")
+
+  @@index([cycleNumber, displayedAt])
+  @@index([localDate])
+}
+
+model Habit {
+  id                String                   @id @default(uuid())
+  type              String
+  builtInKey        String?                  @unique
+  name              String
+  normalizedName    String
+  status            String                   @default("DRAFT")
+  startDate         String
+  statusChangedAt   DateTime                 @default(now())
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  version           Int                      @default(1)
+  revisions         HabitRevision[]
+  exclusions        HabitExclusionInterval[]
+  simpleLogs        SimpleHabitLog[]
+  plankSessions     PlankSession[]
+  pushupSets        PushupSet[]
+  waterEntries      WaterEntry[]
+  weeklyFocuses     WeeklyHabitFocus[]
+  notificationRules NotificationRule[]
+
+  @@index([normalizedName, status])
+}
+
+model HabitRevision {
+  id                String   @id @default(uuid())
+  habitId           String
+  effectiveFromDate String
+  effectiveToDate   String?
+  scheduleMask      Int
+  goalValue         Int
+  unit              String
+  createdAt         DateTime @default(now())
+  version           Int      @default(1)
+  habit             Habit    @relation(fields: [habitId], references: [id], onDelete: Restrict)
+
+  @@index([habitId, effectiveFromDate, effectiveToDate])
+}
+
+model HabitExclusionInterval {
+  id        String    @id @default(uuid())
+  habitId   String
+  kind      String
+  startDate String
+  endDate   String?
+  createdAt DateTime  @default(now())
+  endedAt   DateTime?
+  habit     Habit     @relation(fields: [habitId], references: [id], onDelete: Restrict)
+
+  @@index([habitId, kind, startDate])
+}
+
+model SimpleHabitLog {
+  id        String   @id @default(uuid())
+  habitId   String
+  localDate String
+  checkedAt DateTime
+  isExtra   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  version   Int      @default(1)
+  habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Restrict)
+
+  @@unique([habitId, localDate])
+}
+
+model PlankSession {
+  id              String   @id @default(uuid())
+  habitId         String
+  localDate       String
+  startedAt       DateTime
+  stoppedAt       DateTime
+  durationSeconds Int
+  isExtra         Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  version         Int      @default(1)
+  habit           Habit    @relation(fields: [habitId], references: [id], onDelete: Restrict)
+
+  @@index([habitId, localDate])
+}
+
+model PushupSet {
+  id          String   @id @default(uuid())
+  habitId     String
+  localDate   String
+  recordedAt  DateTime
+  repetitions Int
+  setOrder    Int
+  isExtra     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  version     Int      @default(1)
+  habit       Habit    @relation(fields: [habitId], references: [id], onDelete: Restrict)
+
+  @@index([habitId, localDate, setOrder])
+}
+
+model WaterEntry {
+  id          String   @id @default(uuid())
+  habitId     String
+  localDate   String
+  recordedAt  DateTime
+  milliliters Int
+  entryOrder  Int
+  isExtra     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  version     Int      @default(1)
+  habit       Habit    @relation(fields: [habitId], references: [id], onDelete: Restrict)
+
+  @@index([habitId, localDate, entryOrder])
+}
+
+model NotificationRule {
+  id                 String                   @id @default(uuid())
+  kind               String
+  habitId            String?
+  enabled            Boolean                  @default(false)
+  weekdaysMask       Int?
+  timeMinutes        Int?
+  repeatAfter15      Boolean                  @default(false)
+  intervalMinutes    Int?
+  windowStartMinutes Int?
+  windowEndMinutes   Int?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  version            Int                      @default(1)
+  habit              Habit?                   @relation(fields: [habitId], references: [id], onDelete: Restrict)
+  occurrences        NotificationOccurrence[]
+
+  @@index([habitId, kind])
+}
+
+model NotificationOccurrence {
+  id                   String                   @id @default(uuid())
+  notificationRuleId   String
+  kind                 String
+  scheduledFor         DateTime
+  deliveredAt          DateTime?
+  action               String                   @default("NONE")
+  suppressedReason     String                   @default("NONE")
+  snoozeOfOccurrenceId String?
+  createdAt            DateTime                 @default(now())
+  notificationRule     NotificationRule         @relation(fields: [notificationRuleId], references: [id], onDelete: Restrict)
+  snoozeOfOccurrence   NotificationOccurrence?  @relation("NotificationSnooze", fields: [snoozeOfOccurrenceId], references: [id], onDelete: Restrict)
+  snoozedOccurrences   NotificationOccurrence[] @relation("NotificationSnooze")
+
+  @@index([notificationRuleId, scheduledFor])
+  @@index([snoozeOfOccurrenceId])
+  @@unique([notificationRuleId, scheduledFor, kind])
+}
+
+model SearchDocument {
+  id             String   @id @default(uuid())
+  sourceType     String
+  sourceId       String
+  localDate      String
+  taskCategory   String?
+  originalText   String
+  normalizedText String
+  updatedAt      DateTime @updatedAt
+
+  @@unique([sourceType, sourceId])
+  @@index([localDate])
+  @@index([sourceType])
+  @@index([taskCategory])
+}
+
+model AppMetadata {
+  id                      String   @id @default("singleton")
+  appVersion              String
+  schemaVersion           Int
+  seedVersion             Int
+  maxObservedBusinessDate String
+  installedAt             DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
