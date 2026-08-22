@@ -1,0 +1,14 @@
+node_modules/
+.codex/
+.next/
+dist-electron/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+build-manifest.json
+prisma/dev.db*
+tmp/
